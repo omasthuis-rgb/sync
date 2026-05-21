@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Uploaded videos
+uploads/
+
+# Env files
+.env
+
+# Logs
+npm-debug.log*
+
+# Editor directories
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+
+# Build outputs
+dist/
+build/
