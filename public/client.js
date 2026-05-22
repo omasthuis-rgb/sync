@@ -326,6 +326,10 @@ fetch('/playlists').then(r => r.json()).then(pls => {
 });
 
 function renderPlaylistsHome() {
+  const playlistCardTitle = document.getElementById('playlist-card-title');
+  if (playlistCardTitle) {
+    playlistCardTitle.textContent = `${selectedPlaylist || 'default'} (${currentPlaylist.length})`;
+  }
   if (!playlistsHomeEl) return;
   playlistsHomeEl.innerHTML = '';
   // update playlist select
