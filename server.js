@@ -35,7 +35,9 @@ app.get('/videos', (req, res) => {
 // Upload endpoint (single file)
 app.post('/upload', upload.single('video'), (req, res) => {
   if (!req.file) return res.status(400).send('No file uploaded');
-  emitPlaylist();
+  // refresh default playlist to include the new upload and notify clients
+  loadUploadsIntoDefault();
+  emitPlaylists();
   res.json({ ok: true, file: req.file.filename });
 });
 
@@ -71,8 +73,13 @@ app.get('/video/:name', (req, res) => {
 });
 
 // In-memory state for sync
-let playlist = [];
+// playlists: map playlistName -> array of items { name, url }
+let playlists = {};
+// ensure a default playlist exists
+playlists['default'] = [];
+
 let state = {
+  playlist: 'default',
   index: 0,
   playing: false,
   time: 0,
@@ -81,25 +88,25 @@ let state = {
   currentUrl: null
 };
 
-function loadPlaylist() {
+function loadUploadsIntoDefault() {
   try {
     const files = fs.readdirSync(UPLOAD_DIR).filter(f => !f.startsWith('.'));
     files.sort();
-    playlist = files;
+    // replace default playlist contents with uploaded files if not present
+    playlists['default'] = files.map(f => ({ name: f, url: `/video/${encodeURIComponent(f)}`}));
   } catch (e) {
-    playlist = [];
+    playlists['default'] = [];
   }
 }
 
-function emitPlaylist() {
-  loadPlaylist();
-  io.emit('playlist', playlist.map(f => ({ name: f, url: `/video/${encodeURIComponent(f)}`})));
+function emitPlaylists() {
+  io.emit('playlists', Object.keys(playlists).map(name => ({ name, items: playlists[name] })));
 }
 
-loadPlaylist();
+loadUploadsIntoDefault();
 
 io.on('connection', (socket) => {
-  socket.emit('playlist', playlist.map(f => ({ name: f, url: `/video/${encodeURIComponent(f)}`})));
+  socket.emit('playlists', Object.keys(playlists).map(name => ({ name, items: playlists[name] })));
 
   const now = Date.now();
   const currentState = { ...state };
@@ -129,6 +136,13 @@ io.on('connection', (socket) => {
       state.lastUpdate = Date.now();
       state.sourceType = 'file';
       state.currentUrl = null;
+    } else if (msg.type === 'setPlaylist') {
+      state.playlist = msg.playlist || 'default';
+      state.index = 0;
+      state.time = 0;
+      state.lastUpdate = Date.now();
+      state.sourceType = 'file';
+      state.currentUrl = null;
     } else if (msg.type === 'loadUrl') {
       state.sourceType = 'url';
       state.currentUrl = msg.url || null;
@@ -140,7 +154,8 @@ io.on('connection', (socket) => {
 
     const stamped = { ...msg, serverTime: Date.now() };
     socket.broadcast.emit('control', stamped);
-    emitPlaylist();
+    // If uploads changed or playlist modifications happened, broadcast playlists
+    emitPlaylists();
   });
 
   socket.on('timesync', (clientSent) => {
@@ -156,6 +171,47 @@ io.on('connection', (socket) => {
     }
     socket.emit('state', { ...s, serverTime: Date.now() });
   });
+});
+
+// REST endpoints for playlist management
+app.get('/playlists', (req, res) => {
+  res.json(Object.keys(playlists).map(name => ({ name, items: playlists[name] })));
+});
+
+app.post('/playlists', express.json(), (req, res) => {
+  const name = (req.body && req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'name required' });
+  if (playlists[name]) return res.status(409).json({ error: 'already exists' });
+  playlists[name] = [];
+  emitPlaylists();
+  res.json({ ok: true, name });
+});
+
+app.post('/playlists/:name/add', express.json(), (req, res) => {
+  const name = req.params.name;
+  if (!playlists[name]) return res.status(404).json({ error: 'playlist not found' });
+  const { filename, url, title } = req.body || {};
+  if (filename) {
+    const filePath = path.join(UPLOAD_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'file not found' });
+    playlists[name].push({ name: title || filename, url: `/video/${encodeURIComponent(filename)}` });
+  } else if (url) {
+    playlists[name].push({ name: title || url, url });
+  } else {
+    return res.status(400).json({ error: 'filename or url required' });
+  }
+  emitPlaylists();
+  res.json({ ok: true });
+});
+
+app.post('/playlists/:name/remove', express.json(), (req, res) => {
+  const name = req.params.name;
+  if (!playlists[name]) return res.status(404).json({ error: 'playlist not found' });
+  const { index } = req.body || {};
+  if (typeof index !== 'number' || index < 0 || index >= playlists[name].length) return res.status(400).json({ error: 'invalid index' });
+  playlists[name].splice(index, 1);
+  emitPlaylists();
+  res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3000;

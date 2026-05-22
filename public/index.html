@@ -31,6 +31,14 @@
           <div class="hero-card">
             <div class="hero-card-label">Watch together</div>
             <p>Click to join the synced viewing lounge and start controlling playback for all viewers.</p>
+            <div class="card" style="margin-top:16px;">
+              <div class="card-title">Playlists</div>
+              <div id="playlists-home"></div>
+              <div style="display:flex;gap:8px;margin-top:12px;">
+                <input id="newPlaylistName" type="text" placeholder="New playlist name" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--text);" />
+                <button id="createPlaylistBtn" class="secondary-btn">Create</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -42,7 +50,10 @@
             <h2>Watch Together</h2>
             <p>Control playback, share a URL, or upload a video right from this page.</p>
           </div>
-          <button id="openUploadBtn" class="secondary-btn">Upload / URL</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="backHomeBtn" class="secondary-btn">Home</button>
+            <button id="openUploadBtn" class="secondary-btn">Upload / URL</button>
+          </div>
         </div>
 
         <div id="upload-panel" class="card hidden">
@@ -59,6 +70,11 @@
           <div class="upload-actions">
             <button id="addUrlBtn" class="primary-btn">Load Video URL</button>
             <button id="uploadBtn" class="secondary-btn">Upload File</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select id="playlistSelect" style="padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--text);"></select>
+              <button id="addToPlaylistBtn" class="secondary-btn">Add Upload to Playlist</button>
+              <button id="addUrlToPlaylistBtn" class="secondary-btn">Add URL to Playlist</button>
+            </div>
             <div id="uploadStatus" class="status-text"></div>
           </div>
         </div>

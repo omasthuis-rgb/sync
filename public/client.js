@@ -1,6 +1,8 @@
 const socket = io();
 
-let playlist = [];
+let playlists = [];
+let currentPlaylist = [];
+let selectedPlaylist = 'default';
 let currentIndex = 0;
 let currentSource = { type: 'file', url: '' };
 let isUploader = false;
@@ -8,6 +10,9 @@ let ignoreSync = false;
 
 const video = document.getElementById('video');
 const playlistEl = document.getElementById('playlist');
+const playlistsHomeEl = document.getElementById('playlists-home');
+const newPlaylistName = document.getElementById('newPlaylistName');
+const createPlaylistBtn = document.getElementById('createPlaylistBtn');
 const uploadPanel = document.getElementById('upload-panel');
 const openUploadBtn = document.getElementById('openUploadBtn');
 const watchTogetherBtn = document.getElementById('watchTogetherBtn');
@@ -17,8 +22,12 @@ const videoUrlInput = document.getElementById('videoUrl');
 const uploadBtn = document.getElementById('uploadBtn');
 const addUrlBtn = document.getElementById('addUrlBtn');
 const uploadStatus = document.getElementById('uploadStatus');
+const playlistSelect = document.getElementById('playlistSelect');
+const addToPlaylistBtn = document.getElementById('addToPlaylistBtn');
+const addUrlToPlaylistBtn = document.getElementById('addUrlToPlaylistBtn');
 const watchScreen = document.getElementById('watch-screen');
 const homeScreen = document.getElementById('home-screen');
+const backHomeBtn = document.getElementById('backHomeBtn');
 
 const roleInputs = document.querySelectorAll('input[name=role]');
 
@@ -68,8 +77,11 @@ uploadBtn.addEventListener('click', async () => {
   uploadStatus.textContent = 'Uploading...';
   const res = await fetch('/upload', { method: 'POST', body: fd });
   if (res.ok) {
+    const json = await res.json();
     uploadStatus.textContent = 'Upload complete.';
     videoFileInput.value = '';
+    // remember last uploaded filename so user can add it to a playlist
+    lastUploadedFile = json.file;
     socket.emit('requestState');
   } else {
     uploadStatus.textContent = 'Upload failed.';
@@ -86,25 +98,86 @@ addUrlBtn.addEventListener('click', () => {
   uploadStatus.textContent = 'URL loaded for everyone.';
 });
 
+let lastUploadedFile = null;
+
+// Add uploaded file to selected playlist
+addToPlaylistBtn && addToPlaylistBtn.addEventListener('click', async () => {
+  if (!lastUploadedFile) {
+    uploadStatus.textContent = 'No recent upload to add.';
+    return;
+  }
+  const target = playlistSelect.value || selectedPlaylist || 'default';
+  const res = await fetch(`/playlists/${encodeURIComponent(target)}/add`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename: lastUploadedFile }) });
+  if (res.ok) {
+    uploadStatus.textContent = 'Added upload to playlist.';
+    socket.emit('requestState');
+  } else {
+    uploadStatus.textContent = 'Failed to add to playlist.';
+  }
+});
+
+// Add URL to playlist
+addUrlToPlaylistBtn && addUrlToPlaylistBtn.addEventListener('click', async () => {
+  const url = videoUrlInput.value.trim();
+  if (!url) {
+    uploadStatus.textContent = 'Enter a video URL first.';
+    return;
+  }
+  const target = playlistSelect.value || selectedPlaylist || 'default';
+  const res = await fetch(`/playlists/${encodeURIComponent(target)}/add`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url, title: url }) });
+  if (res.ok) {
+    uploadStatus.textContent = 'Added URL to playlist.';
+    socket.emit('requestState');
+  } else {
+    uploadStatus.textContent = 'Failed to add URL to playlist.';
+  }
+});
+
+// Back to home button
+if (backHomeBtn) backHomeBtn.addEventListener('click', () => showScreen('home'));
+
 function renderPlaylist() {
   playlistEl.innerHTML = '';
-  playlist.forEach((item, idx) => {
+  currentPlaylist.forEach((item, idx) => {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.gap = '8px';
+    wrap.style.alignItems = 'center';
+
     const btn = document.createElement('button');
     btn.textContent = `${idx + 1}. ${item.name}`;
+    btn.style.flex = '1';
     btn.addEventListener('click', () => {
       setIndex(idx, true);
-      if (isUploader) socket.emit('control', { type: 'setIndex', index: idx });
+      if (isUploader) socket.emit('control', { type: 'setIndex', index: idx, playlist: selectedPlaylist });
     });
-    playlistEl.appendChild(btn);
+
+    wrap.appendChild(btn);
+
+    if (isUploader) {
+      const del = document.createElement('button');
+      del.textContent = 'Remove';
+      del.className = 'secondary-btn';
+      del.style.padding = '8px 10px';
+      del.addEventListener('click', async () => {
+        await fetch(`/playlists/${encodeURIComponent(selectedPlaylist)}/remove`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ index: idx })
+        });
+        socket.emit('requestState');
+      });
+      wrap.appendChild(del);
+    }
+
+    playlistEl.appendChild(wrap);
   });
 }
 
 function setIndex(idx, autoplay = false) {
-  if (!playlist[idx]) return;
+  if (!currentPlaylist[idx]) return;
   currentIndex = idx;
-  currentSource = { type: 'file', url: playlist[idx].url };
+  currentSource = { type: 'file', url: currentPlaylist[idx].url };
   ignoreSync = true;
-  video.src = playlist[idx].url;
+  video.src = currentPlaylist[idx].url;
   video.load();
   if (autoplay) video.play().catch(() => {});
   setTimeout(() => ignoreSync = false, 500);
@@ -170,29 +243,30 @@ function applySyncTarget(desiredTime, index, playing, sourceType, sourceUrl) {
 
 video.addEventListener('play', () => {
   if (!isUploader || ignoreSync) return;
-  socket.emit('control', { type: 'play', time: video.currentTime, index: currentIndex });
+  socket.emit('control', { type: 'play', time: video.currentTime, index: currentIndex, playlist: selectedPlaylist });
 });
 video.addEventListener('pause', () => {
   if (!isUploader || ignoreSync) return;
-  socket.emit('control', { type: 'pause', time: video.currentTime, index: currentIndex });
+  socket.emit('control', { type: 'pause', time: video.currentTime, index: currentIndex, playlist: selectedPlaylist });
 });
 video.addEventListener('seeking', () => {
   if (!isUploader || ignoreSync) return;
-  socket.emit('control', { type: 'seek', time: video.currentTime, index: currentIndex });
+  socket.emit('control', { type: 'seek', time: video.currentTime, index: currentIndex, playlist: selectedPlaylist });
 });
 video.addEventListener('ended', () => {
   const next = currentIndex + 1;
-  if (currentSource.type === 'file' && next < playlist.length) {
+  if (currentSource.type === 'file' && next < currentPlaylist.length) {
     setIndex(next, true);
-    if (isUploader) socket.emit('control', { type: 'setIndex', index: next });
-    if (isUploader) socket.emit('control', { type: 'play', time: 0, index: next });
+    if (isUploader) socket.emit('control', { type: 'setIndex', index: next, playlist: selectedPlaylist });
+    if (isUploader) socket.emit('control', { type: 'play', time: 0, index: next, playlist: selectedPlaylist });
   }
 });
 
 socket.on('playlist', (pl) => {
-  playlist = pl;
+  // legacy support: single playlist payload
+  currentPlaylist = pl;
   renderPlaylist();
-  if (currentSource.type === 'file' && !playlist[currentIndex]) {
+  if (currentSource.type === 'file' && !currentPlaylist[currentIndex]) {
     setIndex(0, false);
   }
 });
@@ -220,6 +294,14 @@ socket.on('control', (msg) => {
   const elapsed = (serverNow - (msg.serverTime || Date.now())) / 1000;
   const desiredTime = (msg.time || 0) + elapsed;
   if (msg.type === 'setIndex') {
+    if (msg.playlist) {
+      // switch to the playlist specified by the server message
+      const found = playlists.find(p => p.name === msg.playlist);
+      if (found) {
+        selectedPlaylist = found.name;
+        currentPlaylist = found.items || [];
+      }
+    }
     setIndex(msg.index, false);
   } else if (msg.type === 'seek') {
     applySyncTarget(desiredTime, msg.index, true, currentSource.type, currentSource.url);
@@ -232,10 +314,69 @@ socket.on('control', (msg) => {
   }
 });
 
-fetch('/videos').then(r => r.json()).then(pl => {
-  playlist = pl;
+// Fetch initial playlists from server
+fetch('/playlists').then(r => r.json()).then(pls => {
+  playlists = pls || [];
+  const found = playlists.find(p => p.name === selectedPlaylist) || playlists[0] || { name: 'default', items: [] };
+  selectedPlaylist = found.name;
+  currentPlaylist = found.items || [];
+  renderPlaylistsHome();
   renderPlaylist();
-  if (playlist.length) setIndex(0, false);
+  if (currentPlaylist.length) setIndex(0, false);
+});
+
+function renderPlaylistsHome() {
+  if (!playlistsHomeEl) return;
+  playlistsHomeEl.innerHTML = '';
+  // update playlist select
+  if (playlistSelect) {
+    playlistSelect.innerHTML = '';
+    playlists.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = `${p.name} (${p.items.length})`;
+      playlistSelect.appendChild(opt);
+    });
+    // ensure selectedPlaylist is selected
+    if (selectedPlaylist) playlistSelect.value = selectedPlaylist;
+  }
+  playlists.forEach(p => {
+    const b = document.createElement('div');
+    b.style.display = 'flex';
+    b.style.justifyContent = 'space-between';
+    b.style.alignItems = 'center';
+    b.style.marginBottom = '8px';
+
+    const left = document.createElement('div');
+    left.textContent = p.name + ` (${p.items.length})`;
+    left.style.cursor = 'pointer';
+    left.addEventListener('click', () => {
+      selectedPlaylist = p.name;
+      currentPlaylist = p.items;
+      renderPlaylist();
+      if (isUploader) socket.emit('control', { type: 'setPlaylist', playlist: selectedPlaylist });
+    });
+
+    b.appendChild(left);
+    playlistsHomeEl.appendChild(b);
+  });
+}
+
+createPlaylistBtn && createPlaylistBtn.addEventListener('click', async () => {
+  const name = (newPlaylistName.value || '').trim();
+  if (!name) return;
+  await fetch('/playlists', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+  newPlaylistName.value = '';
+  socket.emit('requestState');
+});
+
+socket.on('playlists', (pls) => {
+  playlists = pls || [];
+  const found = playlists.find(p => p.name === selectedPlaylist) || playlists[0] || { name: 'default', items: [] };
+  selectedPlaylist = found.name;
+  currentPlaylist = found.items || [];
+  renderPlaylistsHome();
+  renderPlaylist();
 });
 
 socket.emit('requestState');
