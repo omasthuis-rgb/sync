@@ -17,7 +17,7 @@ const uploadPanel = document.getElementById('upload-panel');
 const openUploadBtn = document.getElementById('openUploadBtn');
 const watchTogetherBtn = document.getElementById('watchTogetherBtn');
 const browseAnimeBtn = document.getElementById('browseAnimeBtn');
-const goWatchBtn = document.getElementById('goWatchBtn');
+const heroBrowseCardBtn = document.getElementById('heroBrowseCardBtn');
 const videoFileInput = document.getElementById('videoFile');
 const videoUrlInput = document.getElementById('videoUrl');
 const uploadBtn = document.getElementById('uploadBtn');
@@ -64,7 +64,7 @@ browseAnimeBtn && browseAnimeBtn.addEventListener('click', () => {
   renderBrowseList();
   showScreen('browse');
 });
-goWatchBtn.addEventListener('click', () => {
+heroBrowseCardBtn && heroBrowseCardBtn.addEventListener('click', () => {
   renderBrowseList();
   showScreen('browse');
 });
@@ -338,11 +338,15 @@ fetch('/playlists').then(r => r.json()).then(pls => {
   if (currentPlaylist.length) setIndex(0, false);
 });
 
-function renderPlaylistsHome() {
+function updatePlaylistCardTitle() {
   const playlistCardTitle = document.getElementById('playlist-card-title');
   if (playlistCardTitle) {
     playlistCardTitle.textContent = `${selectedPlaylist || 'default'} (${currentPlaylist.length})`;
   }
+}
+
+function renderPlaylistsHome() {
+  updatePlaylistCardTitle();
   if (!playlistsHomeEl) return;
   playlistsHomeEl.innerHTML = '';
   // update playlist select
@@ -371,6 +375,7 @@ function renderPlaylistsHome() {
       selectedPlaylist = p.name;
       currentPlaylist = p.items;
       renderPlaylist();
+      updatePlaylistCardTitle();
       if (isUploader) socket.emit('control', { type: 'setPlaylist', playlist: selectedPlaylist });
     });
 
@@ -408,6 +413,7 @@ function renderBrowseList() {
       selectedPlaylist = p.name;
       currentPlaylist = p.items;
       renderPlaylist();
+      updatePlaylistCardTitle();
       if (currentPlaylist.length) setIndex(0, false);
       socket.emit('requestState');
       showScreen('watch');
