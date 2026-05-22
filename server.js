@@ -35,9 +35,6 @@ app.get('/videos', (req, res) => {
 // Upload endpoint (single file)
 app.post('/upload', upload.single('video'), (req, res) => {
   if (!req.file) return res.status(400).send('No file uploaded');
-  // refresh default playlist to include the new upload and notify clients
-  loadUploadsIntoDefault();
-  emitPlaylists();
   res.json({ ok: true, file: req.file.filename });
 });
 
@@ -88,22 +85,9 @@ let state = {
   currentUrl: null
 };
 
-function loadUploadsIntoDefault() {
-  try {
-    const files = fs.readdirSync(UPLOAD_DIR).filter(f => !f.startsWith('.'));
-    files.sort();
-    // replace default playlist contents with uploaded files if not present
-    playlists['default'] = files.map(f => ({ name: f, url: `/video/${encodeURIComponent(f)}`}));
-  } catch (e) {
-    playlists['default'] = [];
-  }
-}
-
 function emitPlaylists() {
   io.emit('playlists', Object.keys(playlists).map(name => ({ name, items: playlists[name] })));
 }
-
-loadUploadsIntoDefault();
 
 io.on('connection', (socket) => {
   socket.emit('playlists', Object.keys(playlists).map(name => ({ name, items: playlists[name] })));
