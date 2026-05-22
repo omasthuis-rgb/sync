@@ -16,6 +16,7 @@ const createPlaylistBtn = document.getElementById('createPlaylistBtn');
 const uploadPanel = document.getElementById('upload-panel');
 const openUploadBtn = document.getElementById('openUploadBtn');
 const watchTogetherBtn = document.getElementById('watchTogetherBtn');
+const browseAnimeBtn = document.getElementById('browseAnimeBtn');
 const goWatchBtn = document.getElementById('goWatchBtn');
 const videoFileInput = document.getElementById('videoFile');
 const videoUrlInput = document.getElementById('videoUrl');
@@ -25,9 +26,12 @@ const uploadStatus = document.getElementById('uploadStatus');
 const playlistSelect = document.getElementById('playlistSelect');
 const addToPlaylistBtn = document.getElementById('addToPlaylistBtn');
 const addUrlToPlaylistBtn = document.getElementById('addUrlToPlaylistBtn');
+const browseScreen = document.getElementById('browse-screen');
+const browsePlaylistsList = document.getElementById('browse-playlists-list');
 const watchScreen = document.getElementById('watch-screen');
 const homeScreen = document.getElementById('home-screen');
 const backHomeBtn = document.getElementById('backHomeBtn');
+const browseHomeBtn = document.getElementById('browseHomeBtn');
 
 const roleInputs = document.querySelectorAll('input[name=role]');
 
@@ -51,11 +55,19 @@ doTimeSync();
 
 function showScreen(screen) {
   homeScreen.classList.toggle('active', screen === 'home');
+  browseScreen.classList.toggle('active', screen === 'browse');
   watchScreen.classList.toggle('active', screen === 'watch');
 }
 
 watchTogetherBtn.addEventListener('click', () => showScreen('watch'));
-goWatchBtn.addEventListener('click', () => showScreen('watch'));
+browseAnimeBtn && browseAnimeBtn.addEventListener('click', () => {
+  renderBrowseList();
+  showScreen('browse');
+});
+goWatchBtn.addEventListener('click', () => {
+  renderBrowseList();
+  showScreen('browse');
+});
 
 openUploadBtn.addEventListener('click', () => {
   uploadPanel.classList.toggle('hidden');
@@ -135,6 +147,7 @@ addUrlToPlaylistBtn && addUrlToPlaylistBtn.addEventListener('click', async () =>
 
 // Back to home button
 if (backHomeBtn) backHomeBtn.addEventListener('click', () => showScreen('home'));
+if (browseHomeBtn) browseHomeBtn.addEventListener('click', () => showScreen('home'));
 
 function renderPlaylist() {
   playlistEl.innerHTML = '';
@@ -363,6 +376,46 @@ function renderPlaylistsHome() {
 
     b.appendChild(left);
     playlistsHomeEl.appendChild(b);
+  });
+}
+
+function renderBrowseList() {
+  if (!browsePlaylistsList) return;
+  browsePlaylistsList.innerHTML = '';
+  if (!playlists.length) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No playlists available yet.';
+    empty.style.color = 'var(--muted)';
+    browsePlaylistsList.appendChild(empty);
+    return;
+  }
+
+  playlists.forEach(p => {
+    const item = document.createElement('div');
+    item.style.display = 'flex';
+    item.style.justifyContent = 'space-between';
+    item.style.alignItems = 'center';
+    item.style.padding = '14px 16px';
+    item.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+
+    const left = document.createElement('div');
+    left.innerHTML = `<strong>${p.name}</strong><div style="color: var(--muted); font-size: 0.95rem;">${p.items.length} anime</div>`;
+
+    const open = document.createElement('button');
+    open.textContent = 'Open';
+    open.className = 'secondary-btn';
+    open.addEventListener('click', () => {
+      selectedPlaylist = p.name;
+      currentPlaylist = p.items;
+      renderPlaylist();
+      if (currentPlaylist.length) setIndex(0, false);
+      socket.emit('requestState');
+      showScreen('watch');
+    });
+
+    item.appendChild(left);
+    item.appendChild(open);
+    browsePlaylistsList.appendChild(item);
   });
 }
 
