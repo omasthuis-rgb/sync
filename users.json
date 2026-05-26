@@ -1,0 +1,8 @@
+[
+  {
+    "email": "auth-test@example.com",
+    "salt": "e608c6b9991c713f076cc2043964a6d4",
+    "hash": "8142fd86f47f62b74a0f42b7b367b2a5cfd1869ed1d2a34e19fca995e9c56cb47fe66c256236b4c70987e09697706d2c9dbf782bd223f43696cba99af971400b",
+    "createdAt": 1779785289236
+  }
+]

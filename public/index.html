@@ -16,7 +16,10 @@
           <div class="brand-subtitle">Watch together live</div>
         </div>
       </div>
-      <button id="watchTogetherBtn" class="cta-box">WATCH TOGETHER</button>
+      <div class="topbar-actions">
+        <button id="watchTogetherBtn" class="cta-box">WATCH TOGETHER</button>
+        <a id="authBtn" href="/login" class="secondary-btn">Login</a>
+      </div>
     </header>
 
     <main>
@@ -116,5 +119,22 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/client.js"></script>
+  <script>
+    (async () => {
+      const authBtn = document.getElementById('authBtn');
+      if (!authBtn) return;
+      try {
+        const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        const data = await response.json();
+        if (data.user) {
+          authBtn.textContent = 'Logout';
+          authBtn.href = '/logout';
+          authBtn.title = data.user.email;
+        }
+      } catch (error) {
+        // ignore auth check failures and keep the login link
+      }
+    })();
+  </script>
 </body>
 </html>

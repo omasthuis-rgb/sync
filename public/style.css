@@ -48,6 +48,20 @@ button, input {
   background: rgba(255,255,255,0.04);
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topbar-actions a {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .brand {
   display: flex;
   align-items: center;

@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const { Server } = require('socket.io');
 
@@ -19,6 +20,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // List videos
@@ -74,6 +77,79 @@ app.get('/video/:name', (req, res) => {
 let playlists = {};
 // ensure a default playlist exists
 playlists['default'] = [];
+
+const USERS_PATH = path.join(__dirname, 'users.json');
+const sessions = new Map();
+const pendingVerifications = new Map();
+
+function loadUsers() {
+  try {
+    const raw = fs.readFileSync(USERS_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (e) {}
+  return [];
+}
+
+function saveUsers() {
+  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+  return { salt, hash };
+}
+
+function verifyPassword(password, user) {
+  const hash = crypto.pbkdf2Sync(password, user.salt, 100000, 64, 'sha512').toString('hex');
+  const stored = Buffer.from(user.hash, 'hex');
+  const current = Buffer.from(hash, 'hex');
+  if (stored.length !== current.length) return false;
+  return crypto.timingSafeEqual(stored, current);
+}
+
+function generateCode() {
+  return String(crypto.randomInt(100000, 1000000)).padStart(6, '0');
+}
+
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function getCookie(req, name) {
+  const cookieHeader = req.headers.cookie || '';
+  const match = cookieHeader.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
+function issueSession(res, email) {
+  const token = generateToken();
+  sessions.set(token, { email, expiresAt: Date.now() + 1000 * 60 * 60 * 24 });
+  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax`);
+}
+
+function clearSession(res) {
+  res.setHeader('Set-Cookie', 'sid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax');
+}
+
+function getSession(req) {
+  const token = getCookie(req, 'sid');
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session) return null;
+  if (session.expiresAt < Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
+function sendVerificationEmail(email, code) {
+  console.log(`[AUTH] Verification code for ${email}: ${code}`);
+  return { ok: true, mode: 'log' };
+}
+
+let users = loadUsers();
 
 let state = {
   playlist: 'default',
@@ -158,6 +234,88 @@ io.on('connection', (socket) => {
 });
 
 // REST endpoints for playlist management
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.get('/logout', (req, res) => {
+  clearSession(res);
+  res.redirect('/');
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.json({ user: null });
+  res.json({ user: { email: session.email } });
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  const confirmPassword = String(req.body.confirmPassword || '');
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'Passwords do not match.' });
+  }
+  if (users.some(u => u.email === email)) {
+    return res.status(409).json({ error: 'An account with that email already exists.' });
+  }
+
+  const code = generateCode();
+  const { salt, hash } = hashPassword(password);
+  pendingVerifications.set(email, {
+    code,
+    salt,
+    hash,
+    expiresAt: Date.now() + 1000 * 60 * 10
+  });
+
+  sendVerificationEmail(email, code);
+  res.json({ ok: true, message: 'Verification code sent. Enter it to finish creating your account.' });
+});
+
+app.post('/api/auth/verify', (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const code = String(req.body.code || '').trim();
+  const pending = pendingVerifications.get(email);
+
+  if (!pending) {
+    return res.status(400).json({ error: 'No verification code was requested for this email.' });
+  }
+  if (pending.expiresAt < Date.now()) {
+    pendingVerifications.delete(email);
+    return res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
+  }
+  if (pending.code !== code) {
+    return res.status(400).json({ error: 'Incorrect verification code.' });
+  }
+
+  users.push({ email, salt: pending.salt, hash: pending.hash, createdAt: Date.now() });
+  saveUsers();
+  pendingVerifications.delete(email);
+  issueSession(res, email);
+  res.json({ ok: true, user: { email } });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  const user = users.find((entry) => entry.email === email);
+
+  if (!user || !verifyPassword(password, user)) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  issueSession(res, email);
+  res.json({ ok: true, user: { email } });
+});
+
 app.get('/playlists', (req, res) => {
   res.json(Object.keys(playlists).map(name => ({ name, items: playlists[name] })));
 });

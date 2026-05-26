@@ -1,0 +1,313 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DamiWatch Login</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .auth-shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .auth-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 24px;
+      margin-top: 32px;
+      align-items: start;
+    }
+
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .auth-tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .auth-tab {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+    }
+
+    .auth-tab.active {
+      background: linear-gradient(135deg, #3d8dff, #2d6eff);
+      color: #fff;
+    }
+
+    .auth-panel {
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .auth-panel.active {
+      display: flex;
+    }
+
+    .auth-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .auth-field label {
+      color: var(--muted);
+    }
+
+    .auth-field input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,0.04);
+      color: white;
+    }
+
+    .auth-message {
+      min-height: 22px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .auth-note {
+      color: var(--muted);
+      font-size: 0.96rem;
+      line-height: 1.7;
+    }
+
+    .auth-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .primary-btn,
+    .secondary-btn {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+    }
+
+    @media (max-width: 900px) {
+      .auth-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon">▶</span>
+        <div>
+          <div class="brand-title">DamiWatch</div>
+          <div class="brand-subtitle">Watch together live</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a href="/" class="secondary-btn">Back to home</a>
+      </div>
+    </header>
+
+    <div class="auth-grid">
+      <div class="hero-copy">
+        <div class="eyebrow">Secure access</div>
+        <h1>Login or create a DamiWatch account</h1>
+        <p>Use your email and password to sign in, or create an account and verify it with a 6-digit code sent to your inbox.</p>
+        <p class="auth-note">Your password is stored on the server using a salted hash, so it is not available in plain text in the code or in the browser.</p>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab active" data-tab="login">Log in</button>
+          <button type="button" class="auth-tab" data-tab="register">Create account</button>
+        </div>
+
+        <div id="login-panel" class="auth-panel active">
+          <form id="login-form" class="auth-field-group">
+            <div class="auth-field">
+              <label for="login-email">Email</label>
+              <input id="login-email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <div class="auth-field">
+              <label for="login-password">Password</label>
+              <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+            </div>
+            <div class="auth-actions">
+              <button type="submit" class="primary-btn">Sign in</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="register-panel" class="auth-panel">
+          <form id="register-form" class="auth-field-group">
+            <div class="auth-field">
+              <label for="register-email">Email</label>
+              <input id="register-email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <div class="auth-field">
+              <label for="register-password">Password</label>
+              <input id="register-password" name="password" type="password" autocomplete="new-password" required minlength="8" />
+            </div>
+            <div class="auth-field">
+              <label for="register-confirm">Confirm password</label>
+              <input id="register-confirm" name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" />
+            </div>
+            <div class="auth-actions">
+              <button type="submit" class="primary-btn">Send verification code</button>
+            </div>
+          </form>
+
+          <div id="verify-card" class="auth-field-group" style="display:none; flex-direction: column; gap: 14px;">
+            <div class="auth-field">
+              <label for="verify-code">Verification code</label>
+              <input id="verify-code" type="text" inputmode="numeric" maxlength="6" placeholder="123456" />
+            </div>
+            <div class="auth-actions">
+              <button id="verify-btn" type="button" class="primary-btn">Verify and create account</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="auth-message" class="auth-message"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.auth-tab');
+    const panels = {
+      login: document.getElementById('login-panel'),
+      register: document.getElementById('register-panel')
+    };
+    const messageEl = document.getElementById('auth-message');
+    const registerForm = document.getElementById('register-form');
+    const loginForm = document.getElementById('login-form');
+    const verifyCard = document.getElementById('verify-card');
+    const verifyBtn = document.getElementById('verify-btn');
+    const verifyCodeInput = document.getElementById('verify-code');
+
+    let pendingEmail = '';
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach((item) => item.classList.remove('active'));
+        tab.classList.add('active');
+        Object.values(panels).forEach((panel) => panel.classList.remove('active'));
+        panels[tab.dataset.tab].classList.add('active');
+        messageEl.textContent = '';
+      });
+    });
+
+    function setMessage(text, isError = false) {
+      messageEl.textContent = text;
+      messageEl.style.color = isError ? '#ffb6b6' : 'var(--muted)';
+    }
+
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(registerForm);
+      const payload = {
+        email: form.get('email'),
+        password: form.get('password'),
+        confirmPassword: form.get('confirmPassword')
+      };
+
+      try {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setMessage(data.error || 'Unable to create account.', true);
+          return;
+        }
+
+        pendingEmail = payload.email;
+        verifyCard.style.display = 'flex';
+        setMessage(data.message || 'Check your inbox for the 6-digit verification code.');
+      } catch (error) {
+        setMessage('Something went wrong while creating the account.', true);
+      }
+    });
+
+    verifyBtn.addEventListener('click', async () => {
+      const code = verifyCodeInput.value.trim();
+      if (!code || code.length !== 6) {
+        setMessage('Enter the 6-digit verification code.', true);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: pendingEmail, code }),
+          credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setMessage(data.error || 'Verification failed.', true);
+          return;
+        }
+
+        setMessage('Account created successfully. Redirecting...');
+        window.location.href = '/';
+      } catch (error) {
+        setMessage('Unable to verify the code right now.', true);
+      }
+    });
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(loginForm);
+      const payload = {
+        email: form.get('email'),
+        password: form.get('password')
+      };
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setMessage(data.error || 'Login failed.', true);
+          return;
+        }
+
+        setMessage('You are signed in. Redirecting...');
+        window.location.href = '/';
+      } catch (error) {
+        setMessage('Unable to sign in right now.', true);
+      }
+    });
+  </script>
+</body>
+</html>
