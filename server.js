@@ -12,6 +12,7 @@ const io = new Server(server);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+const PLAYLISTS_PATH = path.join(__dirname, 'playlists.json');
 
 // Multer setup
 const storage = multer.diskStorage({
@@ -74,9 +75,25 @@ app.get('/video/:name', (req, res) => {
 
 // In-memory state for sync
 // playlists: map playlistName -> array of items { name, url }
-let playlists = {};
-// ensure a default playlist exists
-playlists['default'] = [];
+function loadPlaylists() {
+  try {
+    const raw = fs.readFileSync(PLAYLISTS_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch (e) {}
+  return { default: [] };
+}
+
+function savePlaylists() {
+  fs.writeFileSync(PLAYLISTS_PATH, JSON.stringify(playlists, null, 2));
+}
+
+let playlists = loadPlaylists();
+if (!playlists || typeof playlists !== 'object' || !Object.keys(playlists).length) {
+  playlists = { default: [] };
+}
+if (!playlists.default) playlists.default = [];
+savePlaylists();
 
 const USERS_PATH = path.join(__dirname, 'users.json');
 const sessions = new Map();
@@ -325,6 +342,7 @@ app.post('/playlists', express.json(), (req, res) => {
   if (!name) return res.status(400).json({ error: 'name required' });
   if (playlists[name]) return res.status(409).json({ error: 'already exists' });
   playlists[name] = [];
+  savePlaylists();
   emitPlaylists();
   res.json({ ok: true, name });
 });
@@ -342,6 +360,7 @@ app.post('/playlists/:name/add', express.json(), (req, res) => {
   } else {
     return res.status(400).json({ error: 'filename or url required' });
   }
+  savePlaylists();
   emitPlaylists();
   res.json({ ok: true });
 });
@@ -352,6 +371,7 @@ app.post('/playlists/:name/remove', express.json(), (req, res) => {
   const { index } = req.body || {};
   if (typeof index !== 'number' || index < 0 || index >= playlists[name].length) return res.status(400).json({ error: 'invalid index' });
   playlists[name].splice(index, 1);
+  savePlaylists();
   emitPlaylists();
   res.json({ ok: true });
 });
