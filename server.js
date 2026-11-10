@@ -4,7 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
+const nodemailer = require('nodemailer');
 const { Server } = require('socket.io');
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
@@ -161,9 +163,40 @@ function getSession(req) {
   return session;
 }
 
-function sendVerificationEmail(email, code) {
-  console.log(`[AUTH] Verification code for ${email}: ${code}`);
-  return { ok: true, mode: 'log' };
+async function sendVerificationEmail(email, code) {
+  const provider = String(process.env.EMAIL_PROVIDER || '').toLowerCase();
+  const presets = {
+    gmail: { host: 'smtp.gmail.com', port: 465, secure: true },
+    outlook: { host: 'smtp-mail.outlook.com', port: 587, secure: false }
+  };
+  const preset = presets[provider] || {};
+  const host = process.env.SMTP_HOST || preset.host;
+  const port = Number(process.env.SMTP_PORT || preset.port || 587);
+  const secure = process.env.SMTP_SECURE === undefined
+    ? (preset.secure === undefined ? port === 465 : preset.secure)
+    : process.env.SMTP_SECURE.toLowerCase() === 'true';
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !user || !pass) {
+    throw new Error('SMTP settings are incomplete');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: { user, pass }
+  });
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || user,
+    to: email,
+    subject: 'Your DamiWatch verification code',
+    text: `Your DamiWatch verification code is ${code}. It expires in 10 minutes.`,
+    html: `<p>Your DamiWatch verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>It expires in 10 minutes.</p>`
+  });
 }
 
 let users = loadUsers();
@@ -266,7 +299,7 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ user: { email: session.email } });
 });
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const password = String(req.body.password || '');
   const confirmPassword = String(req.body.confirmPassword || '');
@@ -286,14 +319,19 @@ app.post('/api/auth/register', (req, res) => {
 
   const code = generateCode();
   const { salt, hash } = hashPassword(password);
+  try {
+    await sendVerificationEmail(email, code);
+  } catch (error) {
+    console.error('[AUTH] Verification email delivery failed:', error.message);
+    return res.status(503).json({ error: 'Unable to send the verification email. Check the SMTP settings and try again.' });
+  }
+
   pendingVerifications.set(email, {
     code,
     salt,
     hash,
     expiresAt: Date.now() + 1000 * 60 * 10
   });
-
-  sendVerificationEmail(email, code);
   res.json({ ok: true, message: 'Verification code sent. Enter it to finish creating your account.' });
 });
 
